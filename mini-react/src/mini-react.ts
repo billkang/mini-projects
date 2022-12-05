@@ -8,12 +8,12 @@ interface VirtualDom {
 
 type HookState = object | string | number | boolean | null;
 
+type HookAction = (state: HookState) => HookState;
+
 interface Hook {
 	state: HookState;
-	queue: HookSetState[];
+	queue: HookAction[];
 }
-
-type HookSetState = (state: HookState) => HookState;
 
 interface Fiber {
 	type?: string | Function;
@@ -165,6 +165,11 @@ function commitWork(fiber: Fiber): void {
 	commitWork(fiber.sibling!);
 }
 
+let wipRoot: Fiber | null = null;
+let currentRoot: Fiber | null = null;
+let nextUnitOfWork: Fiber | null = null;
+let deletions: Fiber[] = [];
+
 function render(element: VirtualDom, container: Node): void {
 	wipRoot = {
 		dom: container,
@@ -177,12 +182,6 @@ function render(element: VirtualDom, container: Node): void {
 	deletions = [];
 	nextUnitOfWork = wipRoot;
 }
-
-let wipRoot: Fiber | null = null;
-
-let currentRoot: Fiber | null = null;
-let nextUnitOfWork: Fiber | null = null;
-let deletions: Fiber[] = [];
 
 function workLoop(deadline: Deadline) {
 	let shouldYield = false;
@@ -302,17 +301,20 @@ function performUnitOfWork(fiber: Fiber): Fiber | null {
 }
 
 function useState(initial: HookState) {
-	const oldHook = wipFiber!.alternate!.hooks![hookIndex];
+	const oldHook = wipFiber
+		&& wipFiber.alternate
+		&& wipFiber.alternate.hooks
+		&& wipFiber.alternate.hooks[hookIndex];
 
 	const hook: Hook = {
 		state: oldHook ? oldHook.state : initial,
 		queue: [],
 	};
 
-	const actions = oldHook ? oldHook.queue : [];
-	actions.forEach((action) => hook.state = action(hook.state));
+	const actions: HookAction[] = oldHook ? oldHook.queue : [];
+	actions.forEach((action: HookAction) => hook.state = action(hook.state));
 
-	const setState = (action: HookSetState) => {
+	const setState = (action: HookAction) => {
 		hook.queue.push(action);
 
 		wipRoot = {
